@@ -1,146 +1,106 @@
-# erp-rocia-db
+# erp-example
 
-Un ERP miniature — **devis, bons de commande, factures, stock, clients,
-fournisseurs** — bâti sur [`rocia-db-sdk`](https://crates.io/crates/rocia-db-sdk),
-le SDK Rust de RociaDB.
+A small ERP — **quotes, orders, invoices, stock, customers, suppliers** —
+built on [`rocia-db-sdk`](https://crates.io/crates/rocia-db-sdk), the RociaDB
+Rust SDK.
 
-Le métier est volontairement petit ; la couverture du SDK est complète. Les
-**44 méthodes publiques** du SDK apparaissent chacune à l'endroit où elle est
-le bon outil pour un besoin réel de l'ERP, jamais pour la citation.
+The business logic is deliberately plain. The point is to use every part of
+the SDK once, at the place where it is the right tool.
 
-## Démarrer
+## Running it
 
 ```bash
-# protoc est nécessaire : le build.rs du SDK compile les .proto embarqués.
-sudo apt-get install -y protobuf-compiler     # ou : brew install protobuf
+# protoc is required: the SDK's build.rs compiles the bundled .proto files.
+sudo apt-get install -y protobuf-compiler     # or: brew install protobuf
 
-cargo run -- --sans-auth demo
+ROCIA_NO_AUTH=1 cargo run
 ```
 
-Sans serveur RociaDB à l'écoute sur `127.0.0.1:50051`, la commande s'arrête
-sur un message explicite plutôt que sur un `unwrap` — c'est le module
-[`erreur`](src/erreur.rs) qui traduit chaque variante de `RociaDbError` en
-conduite à tenir.
+With no RociaDB listening on `127.0.0.1:50051` it stops on a clear message
+rather than a panic.
 
-### Options
-
-| Option | Défaut | Rôle |
+| Variable | Default | Meaning |
 |---|---|---|
-| `--hote` (`ROCIA_HOST`) | `http://127.0.0.1:50051` | hôte et port, **sans chemin** |
-| `--tenant` (`ROCIA_TENANT`) | `demo-erp` | partition métier visée |
-| `--sans-auth` | — | `disable_auth()`, pour le développement local |
-| `--token-url` / `--client-id` / `--client-secret` | variables d'env | identifiants OAuth2 explicites |
-| `--delai-connexion` | `10` | secondes avant d'abandonner la connexion |
-| `--job` | horodaté | fige le préfixe des clés d'idempotence |
+| `ROCIA_HOST` | `http://127.0.0.1:50051` | host and port, **no path** |
+| `ROCIA_TENANT` | `demo` | business partition to write to |
+| `ROCIA_NO_AUTH` | unset | set it to skip authentication (local dev) |
+| `ROCIA_CLEANUP` | unset | set it to delete the demo data at the end |
+| `AUTH_TOKEN_URL`, `AUTH_CLIENT_ID`, `AUTH_CLIENT_SECRET` | — | OAuth2 credentials |
 
-Sans `--sans-auth` ni identifiants explicites, le builder lit lui-même
-`AUTH_TOKEN_URL`, `AUTH_CLIENT_ID` et `AUTH_CLIENT_SECRET` — c'est son
-comportement par défaut. Voir [`.env.example`](.env.example).
+Leave `ROCIA_NO_AUTH` unset and the SDK reads the three `AUTH_*` variables
+itself — that is the builder's default behaviour. Set all three and the
+example also runs a short tour of the `auth` module on its own.
 
-### Sous-commandes
-
-`demo` enchaîne tout ; les autres reprennent une étape isolément et
-supposent que `demo` ou `seed` a déjà tourné.
-
-```bash
-cargo run -- --sans-auth demo --nettoyer   # le scénario complet, puis la purge
-cargo run -- --sans-auth seed              # tiers, catalogue, approvisionnements
-cargo run -- --sans-auth catalogue         # les quatre façons de lire des documents
-cargo run -- --sans-auth ventes            # devis -> commande -> facture -> règlement
-cargo run -- --sans-auth graphe            # traversées
-cargo run -- --sans-auth pieces            # pièces jointes
-cargo run -- --sans-auth admin             # tenants, collections, graphes, buckets, jeton
-cargo run -- --sans-auth nettoyer          # purge
-cargo run -- auth                          # le module `auth` sans RociaDbClient
-```
-
-Pour voir chaque RPC passer :
-
-```bash
-RUST_LOG=erp_rocia_db=info,rocia_db_sdk=debug cargo run -- --sans-auth demo
-```
-
-## Le modèle métier
+## What it does
 
 ```
-client ──a_demande──▶ devis ──converti_en──▶ bon_commande ──facture_par──▶ facture
-                        │
-                        └──porte_sur──▶ article ◀──fournit── fournisseur
+customer ──requested──▶ quote ──converted_to──▶ order ──billed_as──▶ invoice
+                                                                  
+supplier ──supplies──▶ product
 ```
 
-Chaque pièce est un **document** (source de vérité : lignes, totaux, statut)
-doublé d'un **nœud** de graphe (index de navigation). Les expéditions et les
-réceptions écrivent des documents `mouvements_stock` et mettent le stock de
-l'article à jour ; le PDF de la facture et l'export d'inventaire partent dans
-le **service fichier**.
+Each business record is a **document** (the source of truth: lines, totals,
+status) plus a **graph node** (an index for navigation). Shipments and
+deliveries write `stock_moves` documents and update the product's stock; the
+invoice text and the stock export go to the **file service**.
 
-Les montants sont des entiers de centimes et les taux de TVA des points de
-base : aucun flottant ne circule, donc aucun arrondi ne dépend de l'ordre des
-opérations.
+The program runs eight steps in order, printing what each SDK call returned:
+seed, catalogue queries, the sales flow, attachments, graph traversals,
+deployment exploration, error handling, and optional cleanup.
 
-## Où trouver quelle fonctionnalité
+## Layout
 
-| Module | Ce qu'il montre |
+Five files, one per SDK service area:
+
+| File | What it covers |
 |---|---|
-| [`schema`](src/schema.rs) | conventions de nommage — rien ne se déclare côté serveur, une faute de frappe crée une collection de plus |
-| [`contexte`](src/contexte.rs) | `RociaDbBuilder` : hôte, délai, et les trois modes d'authentification |
-| [`tiers`](src/tiers.rs) | `create_document` et sa liaison document → nœud, recherche par champ, réparation d'une liaison manquante |
-| [`catalogue`](src/catalogue.rs) | `put_document`, `list_documents`, `search_documents`, `query_documents`, `list_collections`, mouvements de stock |
-| [`ventes`](src/ventes.rs) | l'enchaînement devis → commande → facture, filtres `In` et tri serveur |
-| [`graphe`](src/graphe.rs) | nœuds et arêtes, par lot et à l'unité, traversées dans les deux sens |
-| [`pieces`](src/pieces.rs) | les trois modes de téléversement, les deux de téléchargement, le contrat de fil |
-| [`admin`](src/admin.rs) | `list_tenants`, cycle de vie du jeton, rejeu après `UNAUTHENTICATED` |
-| [`auth_avance`](src/auth_avance.rs) | `TokenManager`, `fetch_token`, intercepteurs — sans `RociaDbClient` |
-| [`pagination`](src/pagination.rs) | le parcours de curseur, commun aux trois formes de page |
-| [`erreur`](src/erreur.rs) | lecture d'une `RociaDbError` : `code`, `reason`, `status`, et les deux prédicats |
-| [`nettoyage`](src/nettoyage.rs) | trois sémantiques de suppression qui ne se ressemblent pas |
-| [`modele`](src/modele.rs) | le métier, et les seuls calculs testables sans serveur |
+| [`model.rs`](src/model.rs) | business types, VAT and totals, the only logic testable without a server |
+| [`documents.rs`](src/documents.rs) | write, read, search, query, delete documents |
+| [`graph.rs`](src/graph.rs) | nodes and edges, single and batched, traversals both ways |
+| [`files.rs`](src/files.rs) | the three uploads, the two downloads, the wire contract |
+| [`main.rs`](src/main.rs) | the builder, tenants, token lifecycle, error handling, the demo |
 
-## Ce que l'exemple cherche à faire comprendre
+Money is stored in cents and VAT rates in basis points, so no rounding
+depends on the order of operations.
 
-**Rien ne se déclare.** Collection, graphe et bucket existent dès le premier
-écrit. C'est pratique, et c'est pourquoi tout le vocabulaire est centralisé
-dans [`schema`](src/schema.rs) : une faute de frappe n'échoue pas, elle crée
-silencieusement une collection de plus.
+## Things worth knowing about RociaDB
 
-**Le document est la source de vérité, le graphe est un index.** Aucune RPC
-ne relit la valeur d'une arête — `neighbors_out` ne rend qu'un `node_id` et un
-`edge_id`. Ce qui doit être relu vit donc dans le document. Les nœuds
-d'articles sont écrits *enrichis* (`put_nodes`) pour qu'une traversée affiche
-une désignation sans un seul `get_document` de plus.
+**Nothing is declared.** A collection, a graph or a bucket exists from the
+first write to it. That is convenient, and it is why names live in constants:
+a typo does not fail, it silently creates one more collection.
 
-**Rien n'est atomique entre deux écritures.** `create_document` écrit le
-document puis le nœud, sans transaction : si le second appel échoue, le
-document reste sans liaison — d'où `tiers::reparer_liaisons`. L'ordre des
-écritures est un choix à chaque fois : `catalogue::mouvementer` met le stock à
-jour *avant* d'écrire sa trace, parce qu'un stock à jour sans trace se
-rattrape plus facilement que l'inverse.
+**The document is the source of truth; the graph is an index.** No RPC reads
+an edge's value back — `neighbors_out` returns a `node_id` and an `edge_id`,
+nothing else. Product nodes are written *enriched* so a traversal can show a
+name without another `get_document`.
 
-**Les suppressions n'ont pas toutes la même sémantique.**
-`delete_document` et `delete_file` sont idempotents ; `delete_edge` rend
-`NOT_FOUND` sur une arête absente ; et **rien ne supprime un nœud** — il n'y a
-pas de RPC pour cela, un nœud orphelin reste listé par `list_nodes`.
+**No two writes are atomic.** `create_document` writes the document and then
+the node with no transaction between them: if the second fails, the document
+is left unbound, which is why the example shows the repair. Ordering is a
+choice every time — `move_stock` updates the stock *before* writing its
+trace, because an up-to-date stock with no trace is easier to reconcile than
+the reverse.
 
-**Les clés d'idempotence sont un choix, pas un détail.** Le serveur déduplique
-sur `(tenant, operation, request_id)` pendant 24 h. Une clé *stable* est ce
-qu'il faut pour rejouer un import interrompu — mais si cette démonstration
-réutilisait les mêmes clés à chaque lancement, un second `demo` après un
-`nettoyer` ne réécrirait rien. D'où le compromis : clé stable *à l'intérieur*
-d'une exécution, unique d'une exécution à l'autre, et `--job` pour figer le
-préfixe et retrouver le vrai comportement d'un import rejouable.
+**Deletes do not all behave the same.** `delete_document` and `delete_file`
+are idempotent; `delete_edge` returns `NOT_FOUND` on a missing edge; and
+**nothing deletes a node** — there is no RPC for it, so an orphaned node stays
+listed by `list_nodes`.
 
-**`tenant_id` est une partition métier, pas une frontière de sécurité.** Il
-n'est déduit d'aucune identité : n'importe quel client authentifié peut
-adresser n'importe quel tenant. C'est à l'application de décider qui a le
-droit de toucher à quoi.
+**Idempotency keys are a design choice.** The server deduplicates on
+`(tenant, operation, request_id)` for 24 hours. A stable key is what makes an
+interrupted import safe to replay — but if this demo reused the same keys
+every run, a second run after a cleanup would write nothing at all. So the
+prefix changes per run and the key is stable within one.
 
-**Deux erreurs seulement méritent un rejeu.** `UNAUTHENTICATED` est temporaire
-(jeton expiré : renouveler puis rejouer, c'est ce que fait
-`admin::avec_reprise`) ; `PERMISSION_DENIED` est définitif (portée
-insuffisante, rafraîchir n'y changera rien). Tout le reste se lit dans
-`reason()`.
+**`tenant_id` is a business partition, not a security boundary.** It is
+derived from no identity: any authenticated client can address any tenant.
+Deciding who may touch what is the application's job.
 
-## Développement
+**Only one error is worth retrying.** `UNAUTHENTICATED` is temporary (refresh
+the token, replay); `PERMISSION_DENIED` is final (the token is valid but
+lacks the scope). Everything else is in `reason()`.
+
+## Development
 
 ```bash
 PROTOC=/usr/bin/protoc cargo fmt --all -- --check
@@ -148,11 +108,9 @@ PROTOC=/usr/bin/protoc cargo clippy --all-targets --all-features -- -D warnings
 PROTOC=/usr/bin/protoc cargo test
 ```
 
-Les 27 tests unitaires sont **déterministes et sans serveur** : calculs de
-TVA et de totaux, conventions d'identifiants, parcours de curseur, contrat de
-fil du téléversement, validation côté client du builder. Le scénario de bout
-en bout, lui, a besoin d'un RociaDB à l'écoute.
+The six unit tests are deterministic and need no server: VAT and totals, and
+the node/edge id conventions. The demo itself needs a running RociaDB.
 
 ## Licence
 
-Apache-2.0, comme le SDK.
+Apache-2.0, like the SDK.
