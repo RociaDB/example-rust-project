@@ -8,7 +8,7 @@ license = "Apache-2.0"
 publish = false
 
 [dependencies]
-rocia-db-sdk = "1.0.0"
+rociadb-sdk = "1.0.0"
 
 futures = "0.3"
 # `auth::TokenManager` and `auth::fetch_token` take a `reqwest::Client`, so we

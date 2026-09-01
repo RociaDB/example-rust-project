@@ -16,7 +16,7 @@ mod graph;
 mod model;
 
 use model::*;
-use rocia_db_sdk::{RociaDbBuilder, RociaDbClient, RociaDbError};
+use rociadb_sdk::{RociaDbBuilder, RociaDbClient, RociaDbError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Errors are boxed: an example does not need its own error enum, and every
@@ -611,7 +611,7 @@ async fn explore(erp: &Erp) -> Result<()> {
 /// `build()` sets all of this up for you. The module is public for when the
 /// same token has to be used elsewhere, next to a service of your own.
 async fn auth_module_demo(token_url: &str, client_id: &str, client_secret: &str) -> Result<()> {
-    use rocia_db_sdk::auth::{ApiKeyInterceptor, TokenManager, fetch_token};
+    use rociadb_sdk::auth::{TokenManager, fetch_token};
 
     let http = reqwest::Client::new();
 
@@ -639,12 +639,10 @@ async fn auth_module_demo(token_url: &str, client_id: &str, client_secret: &str)
     // installs on all four services.
     let _interceptor = manager.interceptor();
 
+    // Two ways to renew: `refresh_now` blocks until a new token is in hand,
+    // `request_refresh` only wakes the background task and returns.
     manager.refresh_now().await?;
     manager.request_refresh();
-
-    // Server-side, this one validates an incoming `x-api-key`. It has no
-    // business in a client; it is here because the module covers both ends.
-    let _server_side = ApiKeyInterceptor::new("some-service-key".to_string());
 
     println!(
         "   auth module: {} token, valid {}s, refreshing every {:?}",
@@ -702,6 +700,9 @@ fn advice(error: &RociaDbError) -> &'static str {
         RociaDbError::Encode { .. } => "the value could not be serialized; fix the model",
         RociaDbError::Decode { .. } => "the stored document no longer matches the Rust type",
         RociaDbError::Validation(_) => "rejected client-side; nothing was sent",
+        // `RociaDbError` is `#[non_exhaustive]`: a minor release may add a
+        // variant, so a wildcard arm is required and this keeps compiling.
+        _ => "unrecognised error variant: this SDK is newer than the example",
     }
 }
 

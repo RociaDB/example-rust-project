@@ -11,7 +11,7 @@
 
 use crate::model::Product;
 use crate::{Erp, GRAPH, Result};
-use rocia_db_sdk::{EdgeInput, Neighbor, NodeInput};
+use rociadb_sdk::{EdgeInput, Neighbor, NodeInput};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -55,18 +55,21 @@ pub fn edge(label: &str, from: &str, to: &str) -> String {
 /// `put_nodes` sends up to 10 requests concurrently. A node's value must be
 /// a JSON **object** — a scalar or an array is rejected.
 pub async fn put_product_nodes(erp: &Erp, products: &[Product]) -> Result<()> {
+    // `NodeInput` is `#[non_exhaustive]`, so it is built through `new` plus
+    // the optional setter rather than a struct literal: the SDK can add a
+    // field later without breaking this call.
     let mut nodes = Vec::new();
     for product in products {
-        nodes.push(NodeInput {
-            node_id: node("product", &product.id),
-            value: serde_json::to_value(ProductNode {
-                collection: crate::documents::PRODUCTS.to_string(),
-                id: product.id.clone(),
-                reference: product.reference.clone(),
-                name: product.name.clone(),
-            })?,
-            request_id: Some(erp.key(&format!("node:{}", product.id))),
-        });
+        let value = serde_json::to_value(ProductNode {
+            collection: crate::documents::PRODUCTS.to_string(),
+            id: product.id.clone(),
+            reference: product.reference.clone(),
+            name: product.name.clone(),
+        })?;
+        nodes.push(
+            NodeInput::new(node("product", &product.id), value)
+                .with_request_id(erp.key(&format!("node:{}", product.id))),
+        );
     }
     erp.client.put_nodes(&erp.tenant, GRAPH, nodes).await?;
     Ok(())
@@ -109,14 +112,14 @@ pub async fn link_supplier_products(
         .iter()
         .map(|(product_id, purchase_price)| {
             let to = node("product", product_id);
-            EdgeInput {
-                edge_id: edge(SUPPLIES, &from, &to),
-                from: from.clone(),
+            EdgeInput::new(
+                edge(SUPPLIES, &from, &to),
+                from.clone(),
                 to,
-                label: SUPPLIES.to_string(),
-                value: json!({ "purchase_price": purchase_price }),
-                request_id: Some(erp.key(&format!("supplies:{supplier_id}:{product_id}"))),
-            }
+                SUPPLIES,
+                json!({ "purchase_price": purchase_price }),
+            )
+            .with_request_id(erp.key(&format!("supplies:{supplier_id}:{product_id}")))
         })
         .collect();
 

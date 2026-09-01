@@ -1,7 +1,7 @@
 # erp-example
 
 A small ERP — **quotes, orders, invoices, stock, customers, suppliers** —
-built on [`rocia-db-sdk`](https://crates.io/crates/rocia-db-sdk), the RociaDB
+built on [`rociadb-sdk`](https://crates.io/crates/rociadb-sdk), the RociaDB
 Rust SDK.
 
 The business logic is deliberately plain. The point is to use every part of
@@ -99,6 +99,13 @@ Deciding who may touch what is the application's job.
 **Only one error is worth retrying.** `UNAUTHENTICATED` is temporary (refresh
 the token, replay); `PERMISSION_DENIED` is final (the token is valid but
 lacks the scope). Everything else is in `reason()`.
+
+**Most public types are `#[non_exhaustive]`.** `DocumentQueryFilter`,
+`DocumentQuerySort`, `NodeInput` and `EdgeInput` are built through
+`::new(..)` (plus `.with_request_id(..)` on the last two) rather than a
+struct literal, and a `match` on `RociaDbError` needs a wildcard arm. That is
+what lets the SDK add a field or a variant in a minor release without
+breaking callers.
 
 ## Development
 

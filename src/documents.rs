@@ -2,7 +2,7 @@
 
 use crate::model::*;
 use crate::{Erp, GRAPH, Result};
-use rocia_db_sdk::{
+use rociadb_sdk::{
     DocumentQueryFilter, DocumentQueryOperator, DocumentQuerySort, DocumentQuerySortDirection,
 };
 use serde::de::DeserializeOwned;
@@ -195,22 +195,16 @@ pub async fn moves_for_product(erp: &Erp, product_id: &str) -> Result<Vec<StockM
 /// filter is indexable is refused rather than served by a full scan — which
 /// is why the `Eq` on `family` is there alongside it.
 pub async fn search_products(erp: &Erp, family: &str, word: &str) -> Result<(Vec<Product>, u64)> {
+    // These types are `#[non_exhaustive]`: they are built through `new`, not
+    // a struct literal, so the SDK can add a field without breaking callers.
     let filters = [
-        DocumentQueryFilter {
-            field: "family".to_string(),
-            operator: DocumentQueryOperator::Eq,
-            values: vec![json!(family)],
-        },
-        DocumentQueryFilter {
-            field: "name".to_string(),
-            operator: DocumentQueryOperator::Contains,
-            values: vec![json!(word)],
-        },
+        DocumentQueryFilter::new("family", DocumentQueryOperator::Eq, vec![json!(family)]),
+        DocumentQueryFilter::new("name", DocumentQueryOperator::Contains, vec![json!(word)]),
     ];
-    let sort = [DocumentQuerySort {
-        field: "name".to_string(),
-        direction: DocumentQuerySortDirection::Asc,
-    }];
+    let sort = [DocumentQuerySort::new(
+        "name",
+        DocumentQuerySortDirection::Asc,
+    )];
 
     let page = erp
         .client
@@ -226,15 +220,15 @@ pub async fn search_products(erp: &Erp, family: &str, word: &str) -> Result<(Vec
 /// server for active products sorted by stock and compare here, on a set it
 /// has already narrowed and ordered.
 pub async fn products_to_reorder(erp: &Erp) -> Result<Vec<Product>> {
-    let filters = [DocumentQueryFilter {
-        field: "active".to_string(),
-        operator: DocumentQueryOperator::Eq,
-        values: vec![json!(true)],
-    }];
-    let sort = [DocumentQuerySort {
-        field: "stock".to_string(),
-        direction: DocumentQuerySortDirection::Asc,
-    }];
+    let filters = [DocumentQueryFilter::new(
+        "active",
+        DocumentQueryOperator::Eq,
+        vec![json!(true)],
+    )];
+    let sort = [DocumentQuerySort::new(
+        "stock",
+        DocumentQuerySortDirection::Asc,
+    )];
 
     let page = erp
         .client
@@ -253,15 +247,15 @@ pub async fn products_to_reorder(erp: &Erp) -> Result<Vec<Product>> {
 /// stored as ISO strings, which is what makes the server's lexicographic
 /// sort match chronological order.
 pub async fn unpaid_invoices(erp: &Erp) -> Result<(Vec<Invoice>, u64)> {
-    let filters = [DocumentQueryFilter {
-        field: "status".to_string(),
-        operator: DocumentQueryOperator::In,
-        values: vec![json!(INVOICE_ISSUED), json!(INVOICE_OVERDUE)],
-    }];
-    let sort = [DocumentQuerySort {
-        field: "due_date".to_string(),
-        direction: DocumentQuerySortDirection::Asc,
-    }];
+    let filters = [DocumentQueryFilter::new(
+        "status",
+        DocumentQueryOperator::In,
+        vec![json!(INVOICE_ISSUED), json!(INVOICE_OVERDUE)],
+    )];
+    let sort = [DocumentQuerySort::new(
+        "due_date",
+        DocumentQuerySortDirection::Asc,
+    )];
 
     let page = erp
         .client

@@ -16,7 +16,7 @@
 //! server checks its length, never its content.
 
 use crate::{BUCKET, Erp, Result};
-use rocia_db_sdk::{FileStreamUploadOptions, FileUploadOptions, StatResponse, UploadRequest};
+use rociadb_sdk::{FileStreamUploadOptions, FileUploadOptions, StatResponse, UploadRequest};
 use sha2::{Digest, Sha256};
 
 /// Upload a file already in memory.

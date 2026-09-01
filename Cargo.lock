@@ -241,7 +241,7 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "reqwest",
- "rocia-db-sdk",
+ "rociadb-sdk",
  "serde",
  "serde_json",
  "sha2",
@@ -1173,10 +1173,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "rocia-db-sdk"
+name = "rociadb-sdk"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "674c75bf98862f82b3a1eefd9d3eef419a0cfbc5e98d127442ea28fa7edab445"
+checksum = "37771aa059d99855de9a8cef6e8d2a7aaa992ddd437dc6da6f2238ddf1c49fb2"
 dependencies = [
  "futures",
  "http",
